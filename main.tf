@@ -265,6 +265,7 @@ data "aws_iam_policy_document" "lambda_assume_role" {
 resource "aws_iam_role" "lambda_role" {
   name               = "lambda_role"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = var.tags
 }
 
 # Attach the logging access document to the above role.
@@ -277,5 +278,6 @@ resource "aws_iam_role_policy_attachment" "lambda_log_access" {
 resource "aws_iam_policy" "lambda_log_access" {
   name   = "cloudfront_auth_lambda_log_access"
   policy = data.aws_iam_policy_document.lambda_log_access.json
+  tags   = var.tags
 }
 
