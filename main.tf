@@ -1,22 +1,7 @@
 #
-# Local nvm presence check
-#
-resource "null_resource" "check_nvm" {
-  provisioner "local-exec" {
-    command = <<EOF
-    if ! command -v nvm &> /dev/null; then
-        echo "ERROR: nvm is not installed"
-        exit 1
-    fi
-EOF
-  }
-}
-
-#
 # Local nodejs dependency install.
 #
 resource "null_resource" "provision_nodejs" {
-  depends_on = [null_resource.check_nvm]
   provisioner "local-exec" {
     command = <<EOF
     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
@@ -64,7 +49,6 @@ if [ ! -d "build" ]; then
   fi
 fi
 EOF
-
   }
 }
 
@@ -72,7 +56,6 @@ EOF
 resource "null_resource" "build_lambda" {
   depends_on = [null_resource.copy_source]
 
-  # Trigger a rebuild on any variable change
   triggers = {
     copy_source             = null_resource.copy_source.id
     vendor                  = var.auth_vendor
@@ -121,7 +104,7 @@ resource "null_resource" "copy_lambda_artifact" {
 data "null_data_source" "lambda_artifact_sync" {
   inputs = {
     file    = local.lambda_filename
-    trigger = null_resource.copy_lambda_artifact.id # this is for sync only
+    trigger = null_resource.copy_lambda_artifact.id
   }
 }
 
@@ -159,16 +142,8 @@ resource "aws_cloudfront_distribution" "default" {
   default_cache_behavior {
     target_origin_id = local.s3_origin_id
 
-    // Read only
-    allowed_methods = [
-      "GET",
-      "HEAD",
-    ]
-
-    cached_methods = [
-      "GET",
-      "HEAD",
-    ]
+    allowed_methods = ["GET", "HEAD"]
+    cached_methods  = ["GET", "HEAD"]
 
     forwarded_values {
       query_string = true
@@ -209,25 +184,19 @@ resource "aws_cloudfront_distribution" "default" {
 # Lambda
 #
 data "aws_iam_policy_document" "lambda_log_access" {
-  // Allow lambda access to logging
   statement {
     actions = [
       "logs:CreateLogGroup",
       "logs:CreateLogStream",
       "logs:PutLogEvents",
     ]
-
-    resources = [
-      "arn:aws:logs:*:*:*",
-    ]
-
-    effect = "Allow"
+    resources = ["arn:aws:logs:*:*:*"]
+    effect    = "Allow"
   }
 }
 
-# This function is created in us-east-1 as required by CloudFront.
 resource "aws_lambda_function" "default" {
-  depends_on = [null_resource.check_nvm, null_resource.copy_lambda_artifact]
+  depends_on = [null_resource.copy_lambda_artifact]
 
   provider         = aws.us-east-1
   description      = "Managed by Terraform"
@@ -243,21 +212,12 @@ resource "aws_lambda_function" "default" {
 }
 
 data "aws_iam_policy_document" "lambda_assume_role" {
-  // Trust relationships taken from blueprint
-  // Allow lambda to assume this role.
   statement {
-    actions = [
-      "sts:AssumeRole",
-    ]
-
+    actions = ["sts:AssumeRole"]
     principals {
-      type = "Service"
-      identifiers = [
-        "edgelambda.amazonaws.com",
-        "lambda.amazonaws.com",
-      ]
+      type        = "Service"
+      identifiers = ["edgelambda.amazonaws.com", "lambda.amazonaws.com"]
     }
-
     effect = "Allow"
   }
 }
@@ -268,16 +228,13 @@ resource "aws_iam_role" "lambda_role" {
   tags               = var.tags
 }
 
-# Attach the logging access document to the above role.
 resource "aws_iam_role_policy_attachment" "lambda_log_access" {
   role       = aws_iam_role.lambda_role.name
   policy_arn = aws_iam_policy.lambda_log_access.arn
 }
 
-# Create an IAM policy that will be attached to the role
 resource "aws_iam_policy" "lambda_log_access" {
   name   = "cloudfront_auth_lambda_log_access"
   policy = data.aws_iam_policy_document.lambda_log_access.json
   tags   = var.tags
 }
-
