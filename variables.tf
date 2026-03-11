@@ -123,3 +123,9 @@ variable "cloudfront_oac_name" {
   description = "Cloudfront Origin Access Control name"
   type        = string
 }
+
+variable "enable_local_build" {
+  description = "Enable local Node/npm build steps. Must be false in Atlantis."
+  type        = bool
+  default     = false
+}
